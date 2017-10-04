@@ -148,19 +148,19 @@ main(int argc, char** argv)
 			currentPt0.y = objCloud[currentPoly.vertices[0]].y;
 			currentPt0.z = objCloud[currentPoly.vertices[0]].z;
 			pcl::PointXYZ currentPt1 = pcl::PointXYZ();
-			currentPt1.x = objCloud[currentPoly.vertices[0]].x;
-			currentPt1.y = objCloud[currentPoly.vertices[0]].y;
-			currentPt1.z = objCloud[currentPoly.vertices[0]].z;
+			currentPt1.x = objCloud[currentPoly.vertices[1]].x;
+			currentPt1.y = objCloud[currentPoly.vertices[1]].y;
+			currentPt1.z = objCloud[currentPoly.vertices[1]].z;
 			pcl::PointXYZ currentPt2 = pcl::PointXYZ();
-			currentPt2.x = objCloud[currentPoly.vertices[0]].x;
-			currentPt2.y = objCloud[currentPoly.vertices[0]].y;
-			currentPt2.z = objCloud[currentPoly.vertices[0]].z;
+			currentPt2.x = objCloud[currentPoly.vertices[2]].x;
+			currentPt2.y = objCloud[currentPoly.vertices[2]].y;
+			currentPt2.z = objCloud[currentPoly.vertices[2]].z;
 
 
 		
 		Eigen::Vector3f vec12(currentPt1.x - currentPt0.x, currentPt1.y - currentPt0.y, currentPt1.z - currentPt0.z);
 		Eigen::Vector3f vec23(currentPt2.x - currentPt1.x, currentPt2.y - currentPt1.y, currentPt2.z - currentPt1.z);
-		Eigen::Vector3f vecNorm = -vec12.cross(vec23);
+		Eigen::Vector3f vecNorm = vec12.cross(vec23);
 		vecNorm.normalize();
 		for (int ii = 0; ii < 3; ii++)
 		{
@@ -173,8 +173,7 @@ main(int argc, char** argv)
 				if (triangles.cloud.fields[d].name == "normal_x" || 
 					triangles.cloud.fields[d].name == "normal_y" ||
 					triangles.cloud.fields[d].name == "normal_z") {
-					float a = 0.0;
-					memcpy(&triangles.cloud.data[(currentPoly.vertices[ii]) * point_size + triangles.cloud.fields[d].offset],&a, sizeof(float));
+					memcpy(&triangles.cloud.data[(currentPoly.vertices[ii]) * point_size + triangles.cloud.fields[d].offset], &vecNorm[nxyz], sizeof(float));
 				
 					//std::cout << "going once" << std::endl;
 					if (++nxyz == 3)  break;
