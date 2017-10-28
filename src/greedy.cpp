@@ -8,6 +8,8 @@
 #include <pcl/visualization/pcl_visualizer.h>
 #include <pcl/filters/voxel_grid.h>
 #include<iostream>
+#include<unordered_map>
+#include <vector>
 
 
 typedef pcl::PointXYZ PointType;
@@ -84,9 +86,9 @@ main(int argc, char** argv)
 	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
 	pcl::PCLPointCloud2 cloud_blob;
 	
-	pcl::io::loadPCDFile("milk.pcd", cloud_blob);
+	//pcl::io::loadPCDFile("milk.pcd", cloud_blob);
 
-	//pcl::io::loadOBJFile("bunny.obj", cloud_blob);
+	pcl::io::loadOBJFile("bunny.obj", cloud_blob);
 	//	std::cout << "error loading file" << std::endl;
 	//	return 0;
 	//};frompclpointcloud2
@@ -127,61 +129,146 @@ main(int argc, char** argv)
 	//		
 	//	}
 	//}
-	
-	
+
 	pcl::PolygonMesh triangles;		
 	triangles = reconstructModel(cloud);
 	pcl::io::saveOBJFile("testMesh1.obj", triangles);
-
-	
-	//pcl::PointCloud<pcl::PointNormal>::Ptr outputCloud(new pcl::PointCloud<pcl::PointNormal>);
 	pcl::PointCloud <pcl::PointXYZ>objCloud;
 	pcl::fromPCLPointCloud2(triangles.cloud, objCloud);
-	unsigned point_size = static_cast<unsigned> (triangles.cloud.data.size() / (triangles.cloud.width * triangles.cloud.height));
+	//finding the center of the mesh
+	float xcent = 0;
+	float ycent = 0; 
+	float zcent = 0;
+	for (int i = 0; i < triangles.cloud.width; i++) {
+		xcent += objCloud[i].x;
+		ycent += objCloud[i].y;
+		zcent += objCloud[i].z;
+	}
+	xcent = xcent / triangles.cloud.width;
+	ycent = ycent / triangles.cloud.width;
+	zcent = zcent / triangles.cloud.width;
 
+		//for (int i = 0; i < triangles.cloud.width; i++) {
+		//	size_t d = 0;
+		//	while(triangles.cloud.fields[d].name != "normal_x"){
+		//		++d;
+		//	}
+		//	Eigen::Vector3f normalVec (triangles.cloud.data[i * point_size + triangles.cloud.fields[d].offset], triangles.cloud.data[i * point_size + triangles.cloud.fields[d+1].offset], triangles.cloud.data[i * point_size + triangles.cloud.fields[d+2].offset]);
+		//	normalVec.normalize();
+		//	memcpy(&triangles.cloud.data[i * point_size + triangles.cloud.fields[d].offset], &normalVec[0], sizeof(float));
+		//	memcpy(&triangles.cloud.data[i * point_size + triangles.cloud.fields[d+1].offset], &normalVec[1], sizeof(float));
+		//	memcpy(&triangles.cloud.data[i * point_size + triangles.cloud.fields[d+2].offset], &normalVec[2], sizeof(float));
+		//}
+
+	//building the map that each vertex index map to a list of integer that is the face index that the vertex is on
+	//map<vertex index, face index[]>
+	std::unordered_map<int,std::vector<int>> map;
 	for (int i = 0; i < triangles.polygons.size(); i++) {
 		pcl::Vertices currentPoly = triangles.polygons[i];
-
-		
-			pcl::PointXYZ currentPt0 = pcl::PointXYZ();
-			currentPt0.x = objCloud[currentPoly.vertices[0]].x;
-			currentPt0.y = objCloud[currentPoly.vertices[0]].y;
-			currentPt0.z = objCloud[currentPoly.vertices[0]].z;
-			pcl::PointXYZ currentPt1 = pcl::PointXYZ();
-			currentPt1.x = objCloud[currentPoly.vertices[1]].x;
-			currentPt1.y = objCloud[currentPoly.vertices[1]].y;
-			currentPt1.z = objCloud[currentPoly.vertices[1]].z;
-			pcl::PointXYZ currentPt2 = pcl::PointXYZ();
-			currentPt2.x = objCloud[currentPoly.vertices[2]].x;
-			currentPt2.y = objCloud[currentPoly.vertices[2]].y;
-			currentPt2.z = objCloud[currentPoly.vertices[2]].z;
-
-
-		
-		Eigen::Vector3f vec12(currentPt1.x - currentPt0.x, currentPt1.y - currentPt0.y, currentPt1.z - currentPt0.z);
-		Eigen::Vector3f vec23(currentPt2.x - currentPt1.x, currentPt2.y - currentPt1.y, currentPt2.z - currentPt1.z);
-		Eigen::Vector3f vecNorm = vec12.cross(vec23);
-		vecNorm.normalize();
-		for (int ii = 0; ii < 3; ii++)
-		{
-			
-			/*outputCloud->points[index - ii].normal_x = vecNorm[0];
-			outputCloud->points[index - ii].normal_y = vecNorm[1];
-			outputCloud->points[index - ii].normal_z = vecNorm[2];*/
-			int nxyz = 0;
-			for (size_t d = 0; d < triangles.cloud.fields.size(); ++d) {
-				if (triangles.cloud.fields[d].name == "normal_x" || 
-					triangles.cloud.fields[d].name == "normal_y" ||
-					triangles.cloud.fields[d].name == "normal_z") {
-					memcpy(&triangles.cloud.data[(currentPoly.vertices[ii]) * point_size + triangles.cloud.fields[d].offset], &vecNorm[nxyz], sizeof(float));
-				
-					//std::cout << "going once" << std::endl;
-					if (++nxyz == 3)  break;
-				}
-				 
+		//currentPoly.vertices[0] will return the index of the vertex
+		for (int j = 0; j < currentPoly.vertices.size(); j++) {
+			std::unordered_map<int, std::vector<int>>::const_iterator findResult = map.find(currentPoly.vertices[j]);
+			if (findResult == map.end()) {
+				//not found
+				std::vector<int> v = { i };
+				map.insert(std::pair<int, std::vector<int>>(currentPoly.vertices[j], std::vector<int>{i}));
+			}
+			else {
+				//found
+				std::vector<int> s = findResult->second;
+				s.push_back(i);
+				map[currentPoly.vertices[j]] = s;
 			}
 		}
 	}
+
+	
+	
+
+
+	//pcl::PointCloud <pcl::PointXYZ>objCloud;
+	//pcl::fromPCLPointCloud2(triangles.cloud, objCloud);
+	//unsigned point_size = static_cast<unsigned> (triangles.cloud.data.size() / (triangles.cloud.width * triangles.cloud.height));
+
+	//for (int i = 0; i < triangles.cloud.width; i++) {
+	//	size_t d = 0;
+	//	while(triangles.cloud.fields[d].name != "normal_x"){
+	//		++d;
+	//	}
+	////	Eigen::Vector3f normalVec (triangles.cloud.data[i * point_size + triangles.cloud.fields[d].offset], triangles.cloud.data[i * point_size + triangles.cloud.fields[d+1].offset], triangles.cloud.data[i * point_size + triangles.cloud.fields[d+2].offset]);
+	////	normalVec.normalize();
+	//	float zero = 0;
+	//	memcpy(&triangles.cloud.data[i * point_size + triangles.cloud.fields[d].offset], &zero, sizeof(float));
+	//	memcpy(&triangles.cloud.data[i * point_size + triangles.cloud.fields[d+1].offset], &zero, sizeof(float));
+	//	memcpy(&triangles.cloud.data[i * point_size + triangles.cloud.fields[d+2].offset], &zero, sizeof(float));
+	//}
+	//
+	////pcl::PointCloud<pcl::PointNormal>::Ptr outputCloud(new pcl::PointCloud<pcl::PointNormal>);
+	//
+	//for (int i = 0; i < triangles.polygons.size(); i++) {
+	//	pcl::Vertices currentPoly = triangles.polygons[i];
+	//	
+	//		pcl::PointXYZ currentPt0 = pcl::PointXYZ();
+	//		currentPt0.x = objCloud[currentPoly.vertices[0]].x;
+	//		currentPt0.y = objCloud[currentPoly.vertices[0]].y;
+	//		currentPt0.z = objCloud[currentPoly.vertices[0]].z;
+	//		pcl::PointXYZ currentPt1 = pcl::PointXYZ();
+	//		currentPt1.x = objCloud[currentPoly.vertices[1]].x;
+	//		currentPt1.y = objCloud[currentPoly.vertices[1]].y;
+	//		currentPt1.z = objCloud[currentPoly.vertices[1]].z;
+	//		pcl::PointXYZ currentPt2 = pcl::PointXYZ();
+	//		currentPt2.x = objCloud[currentPoly.vertices[2]].x;
+	//		currentPt2.y = objCloud[currentPoly.vertices[2]].y;
+	//		currentPt2.z = objCloud[currentPoly.vertices[2]].z;
+	//	
+	//	Eigen::Vector3f vec12(currentPt1.x - currentPt0.x, currentPt1.y - currentPt0.y, currentPt1.z - currentPt0.z);
+	//	Eigen::Vector3f vec23(currentPt2.x - currentPt1.x, currentPt2.y - currentPt1.y, currentPt2.z - currentPt1.z);
+	//	Eigen::Vector3f vecNorm = vec12.cross(vec23);
+	//	Eigen::Vector3f centroid (currentPt0.x + currentPt1.x + currentPt2.x, currentPt0.y + currentPt1.y + currentPt2.y, currentPt0.z + currentPt1.z + currentPt2.z);
+	//	float valueSoFar;
+	//	float angleCosVal = vecNorm.dot(centroid);
+	//	if (angleCosVal < 0) {
+	//		vecNorm = (-vecNorm);
+	//	}
+	//	vecNorm.normalize();
+	//	if (vecNorm.norm() == 0.0) {
+	//		std::cout << "haha" << std::endl;
+	//	}
+	//	for (int ii = 0; ii < 3; ii++)
+	//	{
+	//		
+	//		/*outputCloud->points[index - ii].normal_x = vecNorm[0];
+	//		outputCloud->points[index - ii].normal_y = vecNorm[1];
+	//		outputCloud->points[index - ii].normal_z = vecNorm[2];*/
+	//		int nxyz = 0;
+	//		for (size_t d = 0; d < triangles.cloud.fields.size(); ++d) {
+	//			if (triangles.cloud.fields[d].name == "normal_x" || 
+	//				triangles.cloud.fields[d].name == "normal_y" ||
+	//				triangles.cloud.fields[d].name == "normal_z") {
+	//				valueSoFar=0.0;
+	//				memcpy(&valueSoFar, &triangles.cloud.data[(currentPoly.vertices[ii]) * point_size + triangles.cloud.fields[d].offset],sizeof(float));
+	//				valueSoFar = valueSoFar+ vecNorm[nxyz];
+	//				memcpy(&triangles.cloud.data[(currentPoly.vertices[ii]) * point_size + triangles.cloud.fields[d].offset], &valueSoFar, sizeof(float));
+	//				//memcpy(&triangles.cloud.data[(currentPoly.vertices[ii]) * point_size + triangles.cloud.fields[d].offset], &vecNorm[nxyz], sizeof(float));
+	//				//std::cout << "going once" << std::endl;
+	//				if (++nxyz == 3)  break;
+	//			}
+	//			 
+	//		}
+	//	}
+	//}
+
+	//for (int i = 0; i < triangles.cloud.width; i++) {
+	//	size_t d = 0;
+	//	while(triangles.cloud.fields[d].name != "normal_x"){
+	//		++d;
+	//	}
+	//	Eigen::Vector3f normalVec (triangles.cloud.data[i * point_size + triangles.cloud.fields[d].offset], triangles.cloud.data[i * point_size + triangles.cloud.fields[d+1].offset], triangles.cloud.data[i * point_size + triangles.cloud.fields[d+2].offset]);
+	//	normalVec.normalize();
+	//	memcpy(&triangles.cloud.data[i * point_size + triangles.cloud.fields[d].offset], &normalVec[0], sizeof(float));
+	//	memcpy(&triangles.cloud.data[i * point_size + triangles.cloud.fields[d+1].offset], &normalVec[1], sizeof(float));
+	//	memcpy(&triangles.cloud.data[i * point_size + triangles.cloud.fields[d+2].offset], &normalVec[2], sizeof(float));
+	//}
 	pcl::io::saveOBJFile("testMesh2.obj", triangles);
 	return (0);
 }
