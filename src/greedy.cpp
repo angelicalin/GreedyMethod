@@ -135,6 +135,7 @@ main(int argc, char** argv)
 	pcl::io::saveOBJFile("testMesh1.obj", triangles);
 	pcl::PointCloud <pcl::PointXYZ>objCloud;
 	pcl::fromPCLPointCloud2(triangles.cloud, objCloud);
+
 	//finding the center of the mesh
 	float xcent = 0;
 	float ycent = 0; 
@@ -148,22 +149,18 @@ main(int argc, char** argv)
 	ycent = ycent / triangles.cloud.width;
 	zcent = zcent / triangles.cloud.width;
 
-		//for (int i = 0; i < triangles.cloud.width; i++) {
-		//	size_t d = 0;
-		//	while(triangles.cloud.fields[d].name != "normal_x"){
-		//		++d;
-		//	}
-		//	Eigen::Vector3f normalVec (triangles.cloud.data[i * point_size + triangles.cloud.fields[d].offset], triangles.cloud.data[i * point_size + triangles.cloud.fields[d+1].offset], triangles.cloud.data[i * point_size + triangles.cloud.fields[d+2].offset]);
-		//	normalVec.normalize();
-		//	memcpy(&triangles.cloud.data[i * point_size + triangles.cloud.fields[d].offset], &normalVec[0], sizeof(float));
-		//	memcpy(&triangles.cloud.data[i * point_size + triangles.cloud.fields[d+1].offset], &normalVec[1], sizeof(float));
-		//	memcpy(&triangles.cloud.data[i * point_size + triangles.cloud.fields[d+2].offset], &normalVec[2], sizeof(float));
-		//}
 
 	//building the map that each vertex index map to a list of integer that is the face index that the vertex is on
-	//map<vertex index, face index[]>
+	//map<vertex index, face index[]>,
+	//Find the starting face
 	std::unordered_map<int,std::vector<int>> map;
+	//initilize a centroid for each face
+	Eigen::Vector3f centroid (0.0,0.0,0.0);
+	Eigen::Vector3f centerOfMesh(xcent, ycent, zcent);
+	int startingIndex;
+	float currentMaxDistance = 0.0;
 	for (int i = 0; i < triangles.polygons.size(); i++) {
+		
 		pcl::Vertices currentPoly = triangles.polygons[i];
 		//currentPoly.vertices[0] will return the index of the vertex
 		for (int j = 0; j < currentPoly.vertices.size(); j++) {
@@ -179,10 +176,21 @@ main(int argc, char** argv)
 				s.push_back(i);
 				map[currentPoly.vertices[j]] = s;
 			}
+			//adding up the centroid value
+			centroid = centroid + Eigen::Vector3f(objCloud[currentPoly.vertices[j]].x, objCloud[currentPoly.vertices[j]].y, objCloud[currentPoly.vertices[j]].z);
 		}
+		//averaging the centroid value
+		centroid = centroid / 3.0;
+		//if the current face index has a length longer than the previous max
+		if ((centroid-centerOfMesh).squaredNorm() > currentMaxDistance) {
+			startingIndex = i;
+			currentMaxDistance = (centroid-centerOfMesh).squaredNorm();
+		}
+		//set the centroid back to 0.0
+		centroid = 0 * centroid;
 	}
 
-	
+	//Recursively recalculating the normals
 	
 
 
