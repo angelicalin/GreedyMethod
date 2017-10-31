@@ -13,11 +13,15 @@
 
 
 typedef pcl::PointXYZ PointType;
+pcl::PolygonMesh triangles;
+pcl::PointCloud <pcl::PointXYZ>objCloud;
+std::unordered_map<int, std::vector<int>> mapVertexToFaces;
+std::unordered_map<int, Eigen::Vector3f> mapVertexToNormal;
+std::unordered_map<int, bool> mapFaceToFlag;
 
 pcl::PolygonMesh reconstructModel(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud) {
 
 	/*pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
-
 	pcl::VoxelGrid<PointType> sor;
 	sor.setInputCloud(originalCloud);
 	sor.setLeafSize(1.0f, 1.0f, 1.0f);
@@ -52,7 +56,6 @@ pcl::PolygonMesh reconstructModel(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud) {
 	// Set the maximum distance between connected points (maximum edge length)
 	gp3.setSearchRadius(0.025);
 	
-
 	// Set typical values for the parameters
 	gp3.setMu(2.5);
 	gp3.setMaximumNearestNeighbors(100);
@@ -72,12 +75,39 @@ pcl::PolygonMesh reconstructModel(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud) {
 	//remove(cloud);
 
 	return triangles;
-
 }
 
+Eigen::Vector3f calculateNormal(int faceIndex, Eigen::Vector3f prevNorm) {
+	Eigen::Vector3f point0(objCloud[triangles.polygons[faceIndex].vertices[0]].x, objCloud[triangles.polygons[faceIndex].vertices[0]].y, objCloud[triangles.polygons[faceIndex].vertices[0]].z);
+	Eigen::Vector3f point1(objCloud[triangles.polygons[faceIndex].vertices[1]].x, objCloud[triangles.polygons[faceIndex].vertices[1]].y, objCloud[triangles.polygons[faceIndex].vertices[1]].z);
+	Eigen::Vector3f point2(objCloud[triangles.polygons[faceIndex].vertices[2]].x, objCloud[triangles.polygons[faceIndex].vertices[2]].y, objCloud[triangles.polygons[faceIndex].vertices[2]].z);
+	Eigen::Vector3f vecNorm = (point1 - point0).cross(point2 - point1);
+	float angleCosVal = vecNorm.dot(prevNorm);
+	//Check if the normal is at the correct direction
+	if (angleCosVal < 0) { vecNorm = (-vecNorm); }
+	for (int x = 0; x < 3; x++) {
+		//std::unordered_map<int, Eigen::Vector3f>::const_iterator findNormalSaved = ;
+		mapVertexToNormal[triangles.polygons[faceIndex].vertices[x]] = ( mapVertexToNormal.find(triangles.polygons[faceIndex].vertices[x])->second + vecNorm);
+	}
+	//Take note that the face has been calculated
+	mapFaceToFlag.insert(std::pair<int, bool>(faceIndex, true));
+	return vecNorm;
+}
 
-int
-main(int argc, char** argv)
+void recursiveFaceCalculation(int faceIndex, Eigen::Vector3f prevNormDirection) {
+	Eigen::Vector3f vecNormResult = calculateNormal(faceIndex, prevNormDirection);
+	//more than one vertex would start causing stack overflow, so only using vertices[0]
+
+		std::unordered_map<int, std::vector<int>>::const_iterator findAdjacentFaces = mapVertexToFaces.find(triangles.polygons[faceIndex].vertices[0]);
+		for (int j : findAdjacentFaces->second) {
+			if (mapFaceToFlag.find(j) == mapFaceToFlag.end()) {
+				//We haven't calculate the vertex yet
+				recursiveFaceCalculation(j, vecNormResult);
+			}
+		}
+}
+
+int main(int argc, char** argv)
 {
 	boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer(
 	new pcl::visualization::PCLVisualizer("Point Cloud Viewer"));
@@ -130,12 +160,9 @@ main(int argc, char** argv)
 	//	}
 	//}
 
-	pcl::PolygonMesh triangles;		
 	triangles = reconstructModel(cloud);
-	pcl::io::saveOBJFile("testMesh1.obj", triangles);
-	pcl::PointCloud <pcl::PointXYZ>objCloud;
 	pcl::fromPCLPointCloud2(triangles.cloud, objCloud);
-
+	pcl::io::saveOBJFile("testMesh1.obj", triangles);
 	//finding the center of the mesh
 	float xcent = 0;
 	float ycent = 0; 
@@ -149,49 +176,97 @@ main(int argc, char** argv)
 	ycent = ycent / triangles.cloud.width;
 	zcent = zcent / triangles.cloud.width;
 
-
 	//building the map that each vertex index map to a list of integer that is the face index that the vertex is on
 	//map<vertex index, face index[]>,
 	//Find the starting face
-	std::unordered_map<int,std::vector<int>> map;
+	
 	//initilize a centroid for each face
 	Eigen::Vector3f centroid (0.0,0.0,0.0);
 	Eigen::Vector3f centerOfMesh(xcent, ycent, zcent);
 	int startingIndex;
 	float currentMaxDistance = 0.0;
-	for (int i = 0; i < triangles.polygons.size(); i++) {
-		
-		pcl::Vertices currentPoly = triangles.polygons[i];
-		//currentPoly.vertices[0] will return the index of the vertex
-		for (int j = 0; j < currentPoly.vertices.size(); j++) {
-			std::unordered_map<int, std::vector<int>>::const_iterator findResult = map.find(currentPoly.vertices[j]);
-			if (findResult == map.end()) {
-				//not found
-				std::vector<int> v = { i };
-				map.insert(std::pair<int, std::vector<int>>(currentPoly.vertices[j], std::vector<int>{i}));
-			}
-			else {
-				//found
-				std::vector<int> s = findResult->second;
-				s.push_back(i);
-				map[currentPoly.vertices[j]] = s;
-			}
-			//adding up the centroid value
-			centroid = centroid + Eigen::Vector3f(objCloud[currentPoly.vertices[j]].x, objCloud[currentPoly.vertices[j]].y, objCloud[currentPoly.vertices[j]].z);
-		}
-		//averaging the centroid value
-		centroid = centroid / 3.0;
-		//if the current face index has a length longer than the previous max
-		if ((centroid-centerOfMesh).squaredNorm() > currentMaxDistance) {
-			startingIndex = i;
-			currentMaxDistance = (centroid-centerOfMesh).squaredNorm();
-		}
-		//set the centroid back to 0.0
-		centroid = 0 * centroid;
-	}
+	Eigen::Vector3f startingFaceCentroid(0.0, 0.0, 0.0);
 
 	//Recursively recalculating the normals
+
+	//Problem:: It seems that the starting point cannot reach to the entire mesh because it is not connected?
+	//But how to find the next starting point?
+	//The normal is changed after the process but it is really off. Not much improvement from the beginning
+	//Also, can the recursion be incorrect??
+	//TODO:: fix the recursion and the while loop here, and see if there is a better way to do this.
+	while (mapFaceToFlag.size() != triangles.polygons.size()) {
+		for (int i = 0; i < triangles.polygons.size(); i++) {
+			//Only checking the faces that have not been calculated
+			if (mapFaceToFlag.find(i) == mapFaceToFlag.end()) {
+				pcl::Vertices currentPoly = triangles.polygons[i];
+				//currentPoly.vertices[0] will return the index of the vertex
+				for (int j = 0; j < currentPoly.vertices.size(); j++) {
+					std::unordered_map<int, std::vector<int>>::const_iterator findResult = mapVertexToFaces.find(currentPoly.vertices[j]);
+					if (findResult == mapVertexToFaces.end()) {
+						//not found
+						std::vector<int> v = { i };
+						mapVertexToFaces.insert(std::pair<int, std::vector<int>>(currentPoly.vertices[j], std::vector<int>{i}));
+						mapVertexToNormal.insert(std::pair<int, Eigen::Vector3f>(currentPoly.vertices[j], Eigen::Vector3f(0.0, 0.0, 0.0)));
+					}
+					else {
+						//found
+						std::vector<int> s = findResult->second;
+						s.push_back(i);
+						mapVertexToFaces[currentPoly.vertices[j]] = s;
+					}
+					//adding up the centroid value
+					centroid = centroid + Eigen::Vector3f(objCloud[currentPoly.vertices[j]].x, objCloud[currentPoly.vertices[j]].y, objCloud[currentPoly.vertices[j]].z);
+				}
+				//averaging the centroid value
+				centroid = centroid / 3.0;
+				//if the current face index has a length longer than the previous max
+				if ((centroid - centerOfMesh).squaredNorm() > currentMaxDistance) {
+					startingIndex = i;
+					startingFaceCentroid = centroid;
+					currentMaxDistance = (centroid - centerOfMesh).squaredNorm();
+				}
+				//set the centroid back to 0.0
+				centroid = 0 * centroid;
+			}
+		}
+		recursiveFaceCalculation(startingIndex, startingFaceCentroid-centerOfMesh);
+		startingIndex = 0;
+		currentMaxDistance = 0.0;
+		std::cout << "going once" << std::endl;
+	}
 	
+	unsigned point_size = static_cast<unsigned> (triangles.cloud.data.size() / (triangles.cloud.width * triangles.cloud.height));
+	Eigen::Vector3f normalResult;
+	for (int i = 0; i < triangles.cloud.width; i++) {
+		size_t d = 0;
+		while (triangles.cloud.fields[d].name != "normal_x") { 
+			++d; 
+		}
+		std::unordered_map<int, Eigen::Vector3f>::const_iterator findResult = mapVertexToNormal.find(i);
+		if (findResult == mapVertexToNormal.end()) {
+			std::cout << "calculating error, normal not found" << std::endl;
+		}
+		else {
+			//found normal
+			normalResult = findResult->second;
+			normalResult.normalize();
+			memcpy(&triangles.cloud.data[i*point_size + triangles.cloud.fields[d].offset], &normalResult[0], sizeof(float));
+			memcpy(&triangles.cloud.data[i*point_size + triangles.cloud.fields[d+1].offset], &normalResult[1], sizeof(float));
+			memcpy(&triangles.cloud.data[i*point_size + triangles.cloud.fields[d+2].offset], &normalResult[2], sizeof(float));
+		}
+	}
+	
+	//for (int i = 0; i < triangles.cloud.width; i++) {
+	//	size_t d = 0;
+	//	while(triangles.cloud.fields[d].name != "normal_x"){
+	//		++d;
+	//	}
+	//	Eigen::Vector3f normalVec (triangles.cloud.data[i * point_size + triangles.cloud.fields[d].offset], triangles.cloud.data[i * point_size + triangles.cloud.fields[d+1].offset], triangles.cloud.data[i * point_size + triangles.cloud.fields[d+2].offset]);
+	//	normalVec.normalize();
+	//	memcpy(&triangles.cloud.data[i * point_size + triangles.cloud.fields[d].offset], &normalVec[0], sizeof(float));
+	//	memcpy(&triangles.cloud.data[i * point_size + triangles.cloud.fields[d+1].offset], &normalVec[1], sizeof(float));
+	//	memcpy(&triangles.cloud.data[i * point_size + triangles.cloud.fields[d+2].offset], &normalVec[2], sizeof(float));
+	//}
 
 
 	//pcl::PointCloud <pcl::PointXYZ>objCloud;
