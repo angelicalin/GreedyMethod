@@ -13,9 +13,9 @@ if (CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
 endif()
 
 
-set (SOURCEFILES src/greedy.cpp)
+set (SOURCEFILES src/GreedyConstruction.cpp src/main.cpp src/bunny.obj)
 
-set (HEADERFILES src/greedy.h src/kinect2_grabber.h)
+set (HEADERFILES src/GreedyConstruction.h src/kinect2_grabber.h)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${${PROJECT_NAME}_SOURCE_DIR}/cmake")
 
