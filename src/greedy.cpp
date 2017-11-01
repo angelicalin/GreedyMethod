@@ -194,10 +194,13 @@ int main(int argc, char** argv)
 	//The normal is changed after the process but it is really off. Not much improvement from the beginning
 	//Also, can the recursion be incorrect??
 	//TODO:: fix the recursion and the while loop here, and see if there is a better way to do this.
-	while (mapFaceToFlag.size() != triangles.polygons.size()) {
+	//while (mapFaceToFlag.size() != triangles.polygons.size()) {
+	
+
+	//Build up the Vertex-Face map
 		for (int i = 0; i < triangles.polygons.size(); i++) {
 			//Only checking the faces that have not been calculated
-			if (mapFaceToFlag.find(i) == mapFaceToFlag.end()) {
+			//if (mapFaceToFlag.find(i) == mapFaceToFlag.end()) {
 				pcl::Vertices currentPoly = triangles.polygons[i];
 				//currentPoly.vertices[0] will return the index of the vertex
 				for (int j = 0; j < currentPoly.vertices.size(); j++) {
@@ -215,25 +218,48 @@ int main(int argc, char** argv)
 						mapVertexToFaces[currentPoly.vertices[j]] = s;
 					}
 					//adding up the centroid value
-					centroid = centroid + Eigen::Vector3f(objCloud[currentPoly.vertices[j]].x, objCloud[currentPoly.vertices[j]].y, objCloud[currentPoly.vertices[j]].z);
+				//	centroid = centroid + Eigen::Vector3f(objCloud[currentPoly.vertices[j]].x, objCloud[currentPoly.vertices[j]].y, objCloud[currentPoly.vertices[j]].z);
 				}
 				//averaging the centroid value
-				centroid = centroid / 3.0;
+			//	centroid = centroid / 3.0;
 				//if the current face index has a length longer than the previous max
-				if ((centroid - centerOfMesh).squaredNorm() > currentMaxDistance) {
-					startingIndex = i;
-					startingFaceCentroid = centroid;
-					currentMaxDistance = (centroid - centerOfMesh).squaredNorm();
-				}
+		//		if ((centroid - centerOfMesh).squaredNorm() > currentMaxDistance) {
+			//		startingIndex = i;
+			//		startingFaceCentroid = centroid;
+			//		currentMaxDistance = (centroid - centerOfMesh).squaredNorm();
+		//		}
 				//set the centroid back to 0.0
-				centroid = 0 * centroid;
-			}
+				//centroid = 0 * centroid;
+			//}
 		}
-		recursiveFaceCalculation(startingIndex, startingFaceCentroid-centerOfMesh);
-		startingIndex = 0;
-		currentMaxDistance = 0.0;
-		std::cout << "going once" << std::endl;
-	}
+		//recursiveFaceCalculation(startingIndex, startingFaceCentroid - centerOfMesh);
+		
+		//std::cout << "going once" << std::endl;
+
+		while (mapFaceToFlag.size() != triangles.polygons.size()) {
+			startingIndex = 0;
+			currentMaxDistance = 0.0;
+			startingFaceCentroid= Eigen::Vector3f (0.0, 0.0, 0.0);
+			for (int i = 0; i < triangles.polygons.size(); i++) {
+				centroid = 0 * centroid;
+				if (mapFaceToFlag.find(i) == mapFaceToFlag.end()) {
+					for (int j = 0; j < triangles.polygons[i].vertices.size(); j++) {
+						centroid = centroid + Eigen::Vector3f(objCloud[triangles.polygons[i].vertices[j]].x, objCloud[triangles.polygons[i].vertices[j]].y, objCloud[triangles.polygons[i].vertices[j]].z);
+					}
+					centroid = centroid / 3.0;
+					if ((centroid - centerOfMesh).squaredNorm() > currentMaxDistance) {
+						startingIndex = i;
+						startingFaceCentroid = centroid;
+						currentMaxDistance = (centroid - centerOfMesh).squaredNorm();
+					}
+				}
+			}
+			recursiveFaceCalculation(startingIndex, startingFaceCentroid - centerOfMesh);
+
+			std::cout << "going once" << std::endl;
+		}
+		
+	//}
 	
 	unsigned point_size = static_cast<unsigned> (triangles.cloud.data.size() / (triangles.cloud.width * triangles.cloud.height));
 	Eigen::Vector3f normalResult;
